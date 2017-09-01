@@ -11,36 +11,45 @@ import java.util.ArrayList;
 import java.util.Scanner;
 
 /**
+ * Currently done (compression things):
+ * 1) reading and writing from and to files
+ * 2) line by line processing
+ * 3) separating words from punctuation
+ * 4) processing occurrence of words into linked list
+ * 
+ * TO-DO:
+ * 1) decompression
+ * 2) prepending and appending "0 " to output file
+ * 3) appending compression summary to end of output file
+ * 4) adding logic to determine if file is to be compressed/decompressed based on "0 " flag
+ * 5) change back to accepting System.in filenames.
+ * 6) move code into more methods for better readability
  * @author aehandlo
  *
  */
 public class Proj1 {
 
-	/**
-	 * 
-	 */
-	public Proj1() {
-		// TODO Auto-generated constructor stub
-	}
+	public LinkedListRecursive<String> fileText = new LinkedListRecursive<String>();
 
 	/**
 	 * @param args
 	 * @throws FileNotFoundException 
 	 */
 	public static void main(String[] args) throws FileNotFoundException {
+		Proj1 obj = new Proj1();
 		//create files and scanners to be used by the program
 		Scanner in = new Scanner(System.in);
 		//System.out.println("Enter a filename (e.g. \"filename.txt\"): ");
 		//System.getProperty("user.dir") + "\\" + in.next()
-		FileInputStream fileName = new FileInputStream("large.txt");
-		PrintStream fileWriter = new PrintStream(new File("large_compressed.txt"));
+		FileInputStream fileName = new FileInputStream("small.txt");
+		PrintStream fileWriter = new PrintStream(new File("small_compressed.txt"));
 		Scanner fileReader = new Scanner(fileName);
 		
 		//loop through input file, processing line by line
 	    while (fileReader.hasNextLine()) {
 	        try {
 	        	//process each line character by character
-	        	processLine(fileReader.nextLine(), fileWriter);
+	        	obj.processLine(fileReader.nextLine(), fileWriter);
 	        	if(fileReader.hasNextLine()) {
 	        		fileWriter.println();
 	        	}
@@ -56,40 +65,67 @@ public class Proj1 {
 	/**
 	 * Process new line of text.
 	 * @param line Line of text to process
-	 * @param fileWriter PrintStream writing to file
+	 * @param fileWriter PrintStream in charge of writing to file
 	 */
-	public static void processLine(String line, PrintStream fileWriter) {
+	public void processLine(String line, PrintStream fileWriter) {
 		Scanner lineReader = new Scanner(line);
 		//change Scanner to scan every character
 		lineReader.useDelimiter("");
-		ArrayList<String> word = new ArrayList<String>();
+		ArrayList<String> wordArray = new ArrayList<String>();
 		
 		while(lineReader.hasNext()) {
 			String c = lineReader.next();
 			//if character is a letter then add to array as we build a whole word. Don't excluse apostrophes
 			if(Character.isLetter(c.charAt(0)) || c.charAt(0) == '\'') {
-				word.add(c);
+				wordArray.add(c);
 				//need to process word before next line
 				if(!lineReader.hasNext()) {
-					// just write the word for now, replace this with processing later
-					String listString = String.join("",  word);
-					System.out.println("word=" + listString);
-					fileWriter.print(listString);
-					word = new ArrayList<String>();
+					//process the word via linked list
+					processWord(wordArray, fileWriter);
+					wordArray = new ArrayList<String>();
 				}
 			} else {
 				//else write non-letter character and process the word and prepare to begin a new word on same line
-				if(!word.isEmpty()) {
-					// just write the word for now, replace this with processing later
-					String listString = String.join("",  word);
-					System.out.println("word=" + listString);
-					fileWriter.print(listString);
-					word = new ArrayList<String>();
+				if(!wordArray.isEmpty()) {
+					//process the word via linked list
+					processWord(wordArray, fileWriter);
+					wordArray = new ArrayList<String>();
 				}
 				fileWriter.print(c);
 			}
 			
 			
+		}
+	}
+	
+	/**
+	 * Process single word from input file. Add the word to the linked list
+	 * if it is not in the list yet, otherwise write index of existing word
+	 * to output file then move word to front of the linked list
+	 * @param wordArray Word to be processed
+	 * @param fileWriter PrintStream in charge of writing to file
+	 */
+	public void processWord(ArrayList<String> wordArray, PrintStream fileWriter) {
+		String word = String.join("",  wordArray);
+		int search = 0;
+		try {
+			search = fileText.contains(word);
+		} catch (IllegalArgumentException e) {
+			//special case: list is empty.
+			fileText.add(0, word);
+			fileWriter.print(word);
+			return;
+		}
+		//new word found
+		if(search < 0) {
+			fileText.add(0, word);
+			fileWriter.print(word);
+		//existing word found
+		} else {
+			fileText.remove(word);
+			fileText.add(0, word);
+			//add 1 because of 0 based indexing
+			fileWriter.print(search + 1);
 		}
 	}
 	
@@ -106,6 +142,7 @@ public class Proj1 {
 
 		private ListNode front; 
 		private int size;
+		private int index;
 		
 		/**
 		 * Constructor for LinkedListRecursive, initializes front to
@@ -160,7 +197,8 @@ public class Proj1 {
 				size++;
 				return true;
 			} else {
-				if (front.contains(element)) {
+				index = 0;
+				if (front.contains(element, index) >= 0) {
 					throw new IllegalArgumentException();
 				}
 				return front.add(element);
@@ -179,6 +217,7 @@ public class Proj1 {
 		 * or greater than list size
 		 */
 		public void add(int idx, E element) {
+			index = 0;
 			if (element == null) {
 				throw new NullPointerException();
 			}
@@ -192,7 +231,7 @@ public class Proj1 {
 				size++;
 		
 			} 
-			else if (front.contains(element)) {
+			else if (front.contains(element, index) >= 0) {
 				throw new IllegalArgumentException();
 				
 			} 
@@ -288,36 +327,13 @@ public class Proj1 {
 		}
 		
 		/**
-		 * Sets the given element at the given index and returns the 
-		 * existing element if the list is not already empty
-		 * @param idx is the index where new element should be placed
-		 * @param element is the element to be placed
-		 * @return element already at index
-		 * @throws IndexOutOfBoundsException is the index less than zero
-		 * or greater than list size - 1
-		 * @throws NullPointerException if element is null
-		 */
-		public E set(int idx, E element) {
-
-			if (element == null) {
-				throw new NullPointerException();
-			}
-			
-			if (idx < 0 || idx > size - 1) {
-				throw new IndexOutOfBoundsException();
-			}
-			
-			return front.set(idx, element);
-		}
-		
-		/**
-		 * Checks to see whether list contains specfied element
+		 * Checks to see whether list contains specified element
 		 * @param element is element to be searched for in list
 		 * @return true if list contains element, false otherwise
 		 * @throws NullPointerException if element is null
 		 * @throws IllegalArgumentException if list is empty
 		 */
-		public boolean contains(E element) {
+		public int contains(E element) {
 			if (element == null) {
 				throw new NullPointerException();
 			}
@@ -325,7 +341,8 @@ public class Proj1 {
 			if (front == null) {
 				throw new IllegalArgumentException();
 			} else {
-				return front.contains(element);
+				index = 0;
+				return front.contains(element, index);
 			}
 		}	
 		
@@ -339,6 +356,7 @@ public class Proj1 {
 			
 			public E data;
 			public ListNode next;
+			public int index;
 			
 			/**
 			 * Constructor for ListNode
@@ -348,41 +366,8 @@ public class Proj1 {
 			public ListNode(E data, ListNode next) {
 				this.data = data;
 				this.next = next;
+				this.index = 0;
 			}
-			
-
-			/**
-			 * Sets the given element at the given index and returns the 
-			 * existing element if the list is not already empty
-			 * @param idx is the index where new element should be placed
-			 * @param element is the element to be placed
-			 * @return element already at index
-			 */
-			public E set(int idx, E element) {
-				E e = null;
-				
-				//don't allow duplicates
-				if (front.contains(element)) {
-					throw new IllegalArgumentException();
-				}
-				
-				//special case, adding to front
-				if (idx == 0) {
-					e = front.data;
-					front.data = element;
-					return e;
-				} else {
-					idx--;
-					if (idx == 0) {
-						e = next.data;
-						next.data = element;
-						return e;
-					} else {
-						return next.set(idx, element);
-					}
-				}			
-			}
-
 
 			/**
 			 * Adds the element to the LinkedListRecursive at the given index
@@ -403,19 +388,20 @@ public class Proj1 {
 
 
 			/**
-			 * Checks to see whether list contains specfied element
+			 * Checks to see whether list contains specified element
 			 * @param element is element to be searched for in list
 			 * @return true if list contains element, false otherwise
 			 * @throws NullPointerException if element is null
 			 * @throws IllegalArgumentException if list is empty
 			 */
-			public boolean contains(E element) {
+			public int contains(E element, int index) {
 				if (this.data.equals(element)) {
-					return true;
+					return index;
 				} else if (next == null) {
-					return false;
+					return -1;
 				} else {
-					return next.contains(element);
+					index++;
+					return next.contains(element, index);
 				}
 
 			}
@@ -427,7 +413,6 @@ public class Proj1 {
 			 * false otherwise
 			 */
 			public boolean add(E element) {
-				
 				if (next == null) {
 					next = new ListNode(element, next);
 					size++;
