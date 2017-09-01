@@ -7,6 +7,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
+import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Scanner;
 
@@ -19,11 +20,11 @@ import java.util.Scanner;
  * 5) decompression of digits into words using linked list
  * 6) logic to determine if file is to be compressed/decompressed
  * 7) prepending/removing "0 " to and from start of output file
+ * 8) appending/removing "0 " + compression statistics to end of output file
  * 
  * TO-DO:
- * 1) appending/removing "0 " + compression statistics to end of output file
- * 2) change back to accepting System.in filenames.
- * 3) move code into more methods for better readability
+ * 1) change back to accepting System.in filenames.
+ * 2) move code into more methods for better readability
  * @author aehandlo
  *
  */
@@ -33,6 +34,9 @@ public class Proj1 {
 	public LinkedListRecursive<String> wordList = new LinkedListRecursive<String>();
 	/** mode = 0 if compressing. mode = 1 if decompressing */
 	public int mode;
+	
+	public String input = "small_compressed.txt";
+	public String output = "small_decompressed.txt";
 
 	/**
 	 * main method begins the file processing
@@ -54,8 +58,8 @@ public class Proj1 {
 		Scanner in = new Scanner(System.in);
 		//System.out.println("Enter a filename (e.g. \"filename.txt\"): ");
 		//System.getProperty("user.dir") + "\\" + in.next()
-		FileInputStream fileName = new FileInputStream("medium_compressed.txt");
-		PrintStream fileWriter = new PrintStream(new File("medium_decompressed.txt"));
+		FileInputStream fileName = new FileInputStream(input);
+		PrintStream fileWriter = new PrintStream(new File(output));
 		Scanner fileReader = new Scanner(fileName);
 		fileReader.useDelimiter("");
 		
@@ -72,8 +76,13 @@ public class Proj1 {
 		//loop through input file, processing line by line
 	    while (fileReader.hasNextLine()) {
 	        try {
-	        	//process each line character by character
-	        	processLine(fileReader.nextLine(), fileWriter);
+	        	//end early if last line is compression information
+	        	String line = fileReader.nextLine();
+	        	if(!line.isEmpty() && line.charAt(0) == '0') {
+	        		break;
+	        	}
+	        	
+	        	processLine(line, fileWriter);
 	        	if(fileReader.hasNextLine()) {
 	        		fileWriter.println();
 	        	}
@@ -81,6 +90,13 @@ public class Proj1 {
 	            //skip the line
 	        }
 	    }
+	    
+	    //add compression info if compressing
+	    if(mode == 0) {
+	    	fileWriter.print("\n0 Uncompressed: " + new File(input).length() 
+	    			+ " bytes;  Compressed: " + new File(output).length() + " bytes");
+	    }
+	    
 	    //close files after program is done
 	    fileReader.close();
 	    fileWriter.close();
@@ -101,21 +117,15 @@ public class Proj1 {
 		//change Scanner to scan every character
 		lineReader.useDelimiter("");
 		ArrayList<String> wordArray = new ArrayList<String>();
+		int idx = 0;
 		
 		while(lineReader.hasNext()) {
 			String c = lineReader.next();
 			//if character is a letter then add to array as we build a whole word. Don't exclude apostrophes
 			if(Character.isLetter(c.charAt(0)) || c.charAt(0) == '\'') {
 				wordArray.add(c);
-				//need to process word before next line
-				if(!lineReader.hasNext()) {
-					//process the word via linked list
-					processWord(wordArray, fileWriter);
-					wordArray = new ArrayList<String>();
-				}
 			} else if(Character.isDigit(c.charAt(0))) {
-				int idx = Character.getNumericValue(c.charAt(0));
-				processDigit(idx, fileWriter);
+				idx = idx * 10  + Character.getNumericValue(c.charAt(0));
 			} else {
 				//else process the previous word and write the current special character. prepare to begin a new word
 				if(!wordArray.isEmpty()) {
@@ -123,7 +133,22 @@ public class Proj1 {
 					processWord(wordArray, fileWriter);
 					wordArray = new ArrayList<String>();
 				}
+				if(idx != 0) {
+					processDigit(idx, fileWriter);
+					idx = 0;
+				}
 				fileWriter.print(c);
+			}
+			
+			//need to process word before next line
+			if(!lineReader.hasNext()) {
+				if(!wordArray.isEmpty()) {
+					processWord(wordArray, fileWriter);
+					wordArray = new ArrayList<String>();
+				} else if(idx != 0){
+					processDigit(idx, fileWriter);
+					idx = 0;
+				}
 			}
 		}
 	}
