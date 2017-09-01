@@ -11,45 +11,69 @@ import java.util.ArrayList;
 import java.util.Scanner;
 
 /**
- * Currently done (compression things):
+ * Currently done:
  * 1) reading and writing from and to files
  * 2) line by line processing
- * 3) separating words from punctuation
- * 4) processing occurrence of words into linked list
+ * 3) isolating words from punctuation
+ * 4) compression of words into digits using linked list
+ * 5) decompression of digits into words using linked list
+ * 6) logic to determine if file is to be compressed/decompressed
+ * 7) prepending/removing "0 " to and from start of output file
  * 
  * TO-DO:
- * 1) decompression
- * 2) prepending and appending "0 " to output file
- * 3) appending compression summary to end of output file
- * 4) adding logic to determine if file is to be compressed/decompressed based on "0 " flag
- * 5) change back to accepting System.in filenames.
- * 6) move code into more methods for better readability
+ * 1) appending/removing "0 " + compression statistics to end of output file
+ * 2) change back to accepting System.in filenames.
+ * 3) move code into more methods for better readability
  * @author aehandlo
  *
  */
 public class Proj1 {
 
-	public LinkedListRecursive<String> fileText = new LinkedListRecursive<String>();
+	/** Linked list of Strings that holds all unique words from an input file */
+	public LinkedListRecursive<String> wordList = new LinkedListRecursive<String>();
+	/** mode = 0 if compressing. mode = 1 if decompressing */
+	public int mode;
 
 	/**
-	 * @param args
-	 * @throws FileNotFoundException 
+	 * main method begins the file processing
+	 * @param args Command line arguments
+	 * @throws FileNotFoundException if file from processFile() is not found
 	 */
 	public static void main(String[] args) throws FileNotFoundException {
 		Proj1 obj = new Proj1();
+		obj.processFile();
+	}
+	
+	/**
+	 * Opens and loops through input file, and opens second file for writing. 
+	 * Determines if program needs to compress or decompress.
+	 * @throws FileNotFoundException if given filename is not found.
+	 */
+	public void processFile() throws FileNotFoundException {
 		//create files and scanners to be used by the program
 		Scanner in = new Scanner(System.in);
 		//System.out.println("Enter a filename (e.g. \"filename.txt\"): ");
 		//System.getProperty("user.dir") + "\\" + in.next()
-		FileInputStream fileName = new FileInputStream("small.txt");
-		PrintStream fileWriter = new PrintStream(new File("small_compressed.txt"));
+		FileInputStream fileName = new FileInputStream("medium_compressed.txt");
+		PrintStream fileWriter = new PrintStream(new File("medium_decompressed.txt"));
 		Scanner fileReader = new Scanner(fileName);
+		fileReader.useDelimiter("");
+		
+		//determine if we are compressing or decompressing
+		if(fileReader.hasNextInt()) {
+			fileReader.next();
+			fileReader.next();
+			mode = 1;
+		} else {
+			fileWriter.print("0 ");
+			mode = 0;
+		}
 		
 		//loop through input file, processing line by line
 	    while (fileReader.hasNextLine()) {
 	        try {
 	        	//process each line character by character
-	        	obj.processLine(fileReader.nextLine(), fileWriter);
+	        	processLine(fileReader.nextLine(), fileWriter);
 	        	if(fileReader.hasNextLine()) {
 	        		fileWriter.println();
 	        	}
@@ -59,7 +83,12 @@ public class Proj1 {
 	    }
 	    //close files after program is done
 	    fileReader.close();
-	    fileWriter.close(); 
+	    fileWriter.close();
+	    
+	    for(int i = 0; i < wordList.size; i++) {
+	    	System.out.print(i + 1 + ". ");
+	    	System.out.println(wordList.get(i));
+	    }
 	}
 	
 	/**
@@ -75,7 +104,7 @@ public class Proj1 {
 		
 		while(lineReader.hasNext()) {
 			String c = lineReader.next();
-			//if character is a letter then add to array as we build a whole word. Don't excluse apostrophes
+			//if character is a letter then add to array as we build a whole word. Don't exclude apostrophes
 			if(Character.isLetter(c.charAt(0)) || c.charAt(0) == '\'') {
 				wordArray.add(c);
 				//need to process word before next line
@@ -84,8 +113,11 @@ public class Proj1 {
 					processWord(wordArray, fileWriter);
 					wordArray = new ArrayList<String>();
 				}
+			} else if(Character.isDigit(c.charAt(0))) {
+				int idx = Character.getNumericValue(c.charAt(0));
+				processDigit(idx, fileWriter);
 			} else {
-				//else write non-letter character and process the word and prepare to begin a new word on same line
+				//else process the previous word and write the current special character. prepare to begin a new word
 				if(!wordArray.isEmpty()) {
 					//process the word via linked list
 					processWord(wordArray, fileWriter);
@@ -93,15 +125,13 @@ public class Proj1 {
 				}
 				fileWriter.print(c);
 			}
-			
-			
 		}
 	}
 	
 	/**
-	 * Process single word from input file. Add the word to the linked list
-	 * if it is not in the list yet, otherwise write index of existing word
-	 * to output file then move word to front of the linked list
+	 * Processes single word from input file. Adds the word to the linked list
+	 * if it is not in the list yet, otherwise writes index of existing word
+	 * to output file then moves word to front of the linked list
 	 * @param wordArray Word to be processed
 	 * @param fileWriter PrintStream in charge of writing to file
 	 */
@@ -109,24 +139,39 @@ public class Proj1 {
 		String word = String.join("",  wordArray);
 		int search = 0;
 		try {
-			search = fileText.contains(word);
+			search = wordList.contains(word);
 		} catch (IllegalArgumentException e) {
 			//special case: list is empty.
-			fileText.add(0, word);
+			wordList.add(0, word);
 			fileWriter.print(word);
 			return;
 		}
 		//new word found
 		if(search < 0) {
-			fileText.add(0, word);
+			wordList.add(0, word);
 			fileWriter.print(word);
 		//existing word found
 		} else {
-			fileText.remove(word);
-			fileText.add(0, word);
+			wordList.remove(word);
+			wordList.add(0, word);
 			//add 1 because of 0 based indexing
 			fileWriter.print(search + 1);
 		}
+	}
+	
+	/**
+	 * Processes digit from input file. Finds word that matches index of the digit
+	 * and prints that word to the output file then moves the word to the front of the list.
+	 * @param idx Index of the word to find in the linked list.
+	 * @param fileWriter PrintStream in charge of writing to file
+	 */
+	public void processDigit(int idx, PrintStream fileWriter) {
+		//subract 1 because of 0 based indexing
+		idx--;
+		String word = wordList.get(idx);
+		fileWriter.print(word);
+		wordList.remove(idx);
+		wordList.add(0, word);
 	}
 	
 	
