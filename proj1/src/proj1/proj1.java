@@ -3,154 +3,156 @@
  */
 package proj1;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.PrintStream;
-import java.nio.file.Files;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.Scanner;
 
 /**
- * Currently done:
- * 1) reading and writing from and to files
- * 2) line by line processing
- * 3) isolating words from punctuation
- * 4) compression of words into digits using linked list
- * 5) decompression of digits into words using linked list
- * 6) logic to determine if file is to be compressed/decompressed
- * 7) prepending/removing "0 " to and from start of output file
- * 8) appending/removing "0 " + compression statistics to end of output file
- * 
- * TO-DO:
- * 1) change back to accepting System.in filenames.
- * 2) move code into more methods for better readability
+ * This program compresses and decompresses text files using a linked list 
+ * that implements a move-to-front heuristic. The program will ask through 
+ * the console for a file and then print the output to console, or
+ * input/output redirection can be used instead.
  * @author aehandlo
  *
  */
-public class Proj1 {
+public class proj1 {
 
 	/** Linked list of Strings that holds all unique words from an input file */
 	public LinkedListRecursive<String> wordList = new LinkedListRecursive<String>();
 	/** mode = 0 if compressing. mode = 1 if decompressing */
 	public int mode;
+	/** Used for counting number of bytes (characters) in the input file */
+	public int inputBytes = 0;
+	/** Used for counting number of bytes (characters) in the output file */
+	public int outputBytes = 0;
 	
-	public String input = "small_compressed.txt";
-	public String output = "small_decompressed.txt";
-
 	/**
-	 * main method begins the file processing
+	 * main method that starts the program
 	 * @param args Command line arguments
-	 * @throws FileNotFoundException if file from processFile() is not found
+	 * @throws IOException if an I/O error occurs
 	 */
-	public static void main(String[] args) throws FileNotFoundException {
-		Proj1 obj = new Proj1();
+	public static void main(String[] args) throws IOException {
+		proj1 obj = new proj1();
 		obj.processFile();
 	}
 	
 	/**
-	 * Opens and loops through input file, and opens second file for writing. 
-	 * Determines if program needs to compress or decompress.
-	 * @throws FileNotFoundException if given filename is not found.
+	 * Opens/loops through input file and opens second file for writing. 
+	 * Also determines if program needs to compress or decompress.
+	 * @throws IOException if an I/O error occurs
 	 */
-	public void processFile() throws FileNotFoundException {
-		//create files and scanners to be used by the program
-		Scanner in = new Scanner(System.in);
-		//System.out.println("Enter a filename (e.g. \"filename.txt\"): ");
-		//System.getProperty("user.dir") + "\\" + in.next()
-		FileInputStream fileName = new FileInputStream(input);
-		PrintStream fileWriter = new PrintStream(new File(output));
-		Scanner fileReader = new Scanner(fileName);
-		fileReader.useDelimiter("");
+	public void processFile() throws IOException {
+		//prepare input and output streams
+		BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+		if(!br.ready()) {
+			System.out.println("Enter a filename (e.g. \"filename.txt\"): ");
+			File fileName = new File(br.readLine());
+			br = new BufferedReader(new FileReader(fileName));
+		}
+		BufferedWriter fileWriter = new BufferedWriter(new OutputStreamWriter(System.out));
 		
 		//determine if we are compressing or decompressing
-		if(fileReader.hasNextInt()) {
-			fileReader.next();
-			fileReader.next();
+		String firstLine = br.readLine();
+		if((int) firstLine.charAt(0) == 48) {
+			//we are decompressing. skip over the "0 " at the start
+			firstLine = firstLine.replaceFirst("^0 ", "");
 			mode = 1;
 		} else {
-			fileWriter.print("0 ");
+			//we are compressing. write "0 " at the start of output
+			fileWriter.write("0 ");
 			mode = 0;
 		}
 		
-		//loop through input file, processing line by line
-	    while (fileReader.hasNextLine()) {
-	        try {
-	        	//end early if last line is compression information
-	        	String line = fileReader.nextLine();
-	        	if(!line.isEmpty() && line.charAt(0) == '0') {
-	        		break;
-	        	}
-	        	
-	        	processLine(line, fileWriter);
-	        	if(fileReader.hasNextLine()) {
-	        		fileWriter.println();
-	        	}
-	        } catch (IllegalArgumentException e) {
-	            //skip the line
-	        }
+		//process the first line of text
+		processLine(firstLine, fileWriter);
+		fileWriter.newLine();
+		
+		//loop through the rest of the input file line by line
+		String nextLine = br.readLine();
+	    while (nextLine != null) {
+        	//break early if last line is compression statistics
+        	if(!nextLine.isEmpty() && nextLine.charAt(0) == '0') {
+        		break;
+        	}
+        	
+        	processLine(nextLine, fileWriter);
+        	fileWriter.newLine();
+	        nextLine = br.readLine();
 	    }
 	    
-	    //add compression info if compressing
+	    //if compressing, add compression statistics
 	    if(mode == 0) {
-	    	fileWriter.print("\n0 Uncompressed: " + new File(input).length() 
-	    			+ " bytes;  Compressed: " + new File(output).length() + " bytes");
+	    	fileWriter.write("0 Uncompressed: " + inputBytes 
+	    			+ " bytes;  Compressed: " + outputBytes + " bytes");
 	    }
 	    
-	    //close files after program is done
-	    fileReader.close();
+	    //close input and output streams
+	    br.close();
 	    fileWriter.close();
-	    
-	    for(int i = 0; i < wordList.size; i++) {
-	    	System.out.print(i + 1 + ". ");
-	    	System.out.println(wordList.get(i));
-	    }
 	}
 	
 	/**
-	 * Process new line of text.
+	 * Process single line of text. Each character is scanned one at a time until
+	 * the program is sure an entire word has been found, then the word is sent
+	 * to be further processed.
 	 * @param line Line of text to process
-	 * @param fileWriter PrintStream in charge of writing to file
+	 * @param fileWriter BufferedWriter in charge of writing to file
+	 * @throws IOException if an I/O error occurs
 	 */
-	public void processLine(String line, PrintStream fileWriter) {
+	public void processLine(String line, BufferedWriter fileWriter) throws IOException {
+		inputBytes += line.length();
+		//prepare line scanner to scan character by character (but still of type String)
 		Scanner lineReader = new Scanner(line);
-		//change Scanner to scan every character
 		lineReader.useDelimiter("");
+		//holds characters until whole word is found
 		ArrayList<String> wordArray = new ArrayList<String>();
+		//needed to figure out index when reading in numbers 1 digit at a time
 		int idx = 0;
 		
 		while(lineReader.hasNext()) {
 			String c = lineReader.next();
-			//if character is a letter then add to array as we build a whole word. Don't exclude apostrophes
-			if(Character.isLetter(c.charAt(0)) || c.charAt(0) == '\'') {
+			
+			//if character is a letter then add to array as we build a whole word
+			if(Character.isLetter(c.charAt(0))) {
 				wordArray.add(c);
+			//else if a digit, calculate index as digits are being read in 1 at a time
 			} else if(Character.isDigit(c.charAt(0))) {
 				idx = idx * 10  + Character.getNumericValue(c.charAt(0));
+			//else we have reached a special character
 			} else {
-				//else process the previous word and write the current special character. prepare to begin a new word
+				//if we were previously reading in a word then process the word
 				if(!wordArray.isEmpty()) {
-					//process the word via linked list
 					processWord(wordArray, fileWriter);
 					wordArray = new ArrayList<String>();
 				}
+				//if we were previously reading in a number then process the number
 				if(idx != 0) {
-					processDigit(idx, fileWriter);
+					processNumber(idx, fileWriter);
 					idx = 0;
 				}
-				fileWriter.print(c);
+				//write the special character
+				outputBytes += c.length();
+				fileWriter.write(c);
 			}
 			
-			//need to process word before next line
+			//if at end of line but haven't processed word yet (no special character), do so now
 			if(!lineReader.hasNext()) {
 				if(!wordArray.isEmpty()) {
 					processWord(wordArray, fileWriter);
 					wordArray = new ArrayList<String>();
 				} else if(idx != 0){
-					processDigit(idx, fileWriter);
+					processNumber(idx, fileWriter);
 					idx = 0;
 				}
 			}
 		}
+		lineReader.close();
 	}
 	
 	/**
@@ -158,52 +160,63 @@ public class Proj1 {
 	 * if it is not in the list yet, otherwise writes index of existing word
 	 * to output file then moves word to front of the linked list
 	 * @param wordArray Word to be processed
-	 * @param fileWriter PrintStream in charge of writing to file
+	 * @param fileWriter BufferedWriter in charge of writing to file
+	 * @throws IOException if an I/O error occurs 
 	 */
-	public void processWord(ArrayList<String> wordArray, PrintStream fileWriter) {
+	public void processWord(ArrayList<String> wordArray, BufferedWriter fileWriter) throws IOException {
+		//word from ArrayList is now a single String
 		String word = String.join("",  wordArray);
+		//index of word in linked list
 		int search = 0;
+		
+		//try to find index of word already in linked list
 		try {
 			search = wordList.contains(word);
+		//special case: list is currently empty.
 		} catch (IllegalArgumentException e) {
-			//special case: list is empty.
-			wordList.add(0, word);
-			fileWriter.print(word);
+			wordList.add(word);
+			outputBytes += word.length();
+			fileWriter.write(word);
 			return;
 		}
-		//new word found
+		
+		//new word found. add to linked list, count bytes, write to output.
 		if(search < 0) {
-			wordList.add(0, word);
-			fileWriter.print(word);
-		//existing word found
+			wordList.add(word);
+			outputBytes += word.length();
+			fileWriter.write(word);
+		//existing word found. move to front, count bytes, write index to output.
 		} else {
 			wordList.remove(word);
-			wordList.add(0, word);
-			//add 1 because of 0 based indexing
-			fileWriter.print(search + 1);
+			wordList.add(word);
+			outputBytes += (int) (Math.log10(search + 1)) + 1;
+			fileWriter.write(String.valueOf(search + 1));
 		}
 	}
 	
 	/**
-	 * Processes digit from input file. Finds word that matches index of the digit
+	 * Processes number from input file. Finds word that matches index of the digit
 	 * and prints that word to the output file then moves the word to the front of the list.
 	 * @param idx Index of the word to find in the linked list.
-	 * @param fileWriter PrintStream in charge of writing to file
+	 * @param fileWriter BufferedWriter in charge of writing to file
+	 * @throws IOException if an I/O error occurs
 	 */
-	public void processDigit(int idx, PrintStream fileWriter) {
-		//subract 1 because of 0 based indexing
+	public void processNumber(int idx, BufferedWriter fileWriter) throws IOException {
+		//subtract 1 because of 0 based indexing
 		idx--;
 		String word = wordList.get(idx);
-		fileWriter.print(word);
+		fileWriter.write(word);
 		wordList.remove(idx);
-		wordList.add(0, word);
+		wordList.add(word);
 	}
 	
 	
 	/**
-	 * Provides custom implementation of a recursive
+	 * Provides custom implementation of a (mostly) recursive
 	 * linked list that does not allow for null or duplicate
-	 * elements as defined by the equals() method
+	 * elements as defined by the equals method. This is a
+	 * modified class I originally authored for a CSC 216
+	 * project!
 	 * @author aehandlo
 	 * @param <E> parameter for LinkedListRecursive
 	 *
@@ -232,7 +245,6 @@ public class Proj1 {
 				return true;
 			}
 			return false;
-			
 		}
 		
 		/**
@@ -247,9 +259,8 @@ public class Proj1 {
 			}
 		}
 		
-		
 		/**
-		 * Adds the element to the LinkedListRecursive
+		 * Adds the element to the front of LinkedListRecursive
 		 * @param element is the element to be added 
 		 * @return true if the element was added at the index,
 		 * false otherwise
@@ -271,47 +282,11 @@ public class Proj1 {
 				if (front.contains(element, index) >= 0) {
 					throw new IllegalArgumentException();
 				}
-				return front.add(element);
-			
-			}
-		}
-		
-		/**
-		 * Adds the element to the LinkedListRecursive at the given index
-		 * @param element is the element to be added 
-		 * @param idx is the index where the element should be added
-		 * @throws NullPointerException if element is null
-		 * @throws IllegalArgumentException if the list
-		 * already contains element
-		 * @throws IndexOutOfBoundsException is the index less than zero
-		 * or greater than list size
-		 */
-		public void add(int idx, E element) {
-			index = 0;
-			if (element == null) {
-				throw new NullPointerException();
-			}
-			
-			if (idx < 0 || idx > size()) {
-				throw new IndexOutOfBoundsException();
-			}
-			
-			if (isEmpty()) {
 				front = new ListNode(element, front);
 				size++;
-		
-			} 
-			else if (front.contains(element, index) >= 0) {
-				throw new IllegalArgumentException();
-				
-			} 
-			else if (idx == 0) {
-				front = new ListNode(element, front);
-				size++;
-			} else {
-				front.add(idx, element);
-			}
+				return true;
 			
+			}
 		}
 		
 		/**
@@ -356,9 +331,7 @@ public class Proj1 {
 					return true;
 					}
 			} 
-			
 			return front.remove(element);
-			
 		}
 		
 		/**
@@ -391,8 +364,6 @@ public class Proj1 {
 				size--;
 				return e;
 			}
-			 
-				
 			return front.remove(idx);
 		}
 		
@@ -416,18 +387,14 @@ public class Proj1 {
 			}
 		}	
 		
-		
 		/**
 		 * Inner class which provides functionality for ListNode
 		 * @author aehandlo
 		 *
 		 */
 		private class ListNode {
-			
 			public E data;
 			public ListNode next;
-			public int index;
-			
 			/**
 			 * Constructor for ListNode
 			 * @param data is the data element for the node
@@ -436,26 +403,7 @@ public class Proj1 {
 			public ListNode(E data, ListNode next) {
 				this.data = data;
 				this.next = next;
-				this.index = 0;
 			}
-
-			/**
-			 * Adds the element to the LinkedListRecursive at the given index
-			 * @param element is the element to be added 
-			 * @param idx is the index where the element should be added
-			 */
-			public void add(int idx, E element) {
-				idx--;
-				// if idx = 0, the next index is what we want to add to
-				if (idx == 0) {
-					next = new ListNode(element, next);
-					size++;
-				} else {
-					next.add(idx, element);
-				}
-				
-			}
-
 
 			/**
 			 * Checks to see whether list contains specified element
@@ -473,24 +421,6 @@ public class Proj1 {
 					index++;
 					return next.contains(element, index);
 				}
-
-			}
-
-			/**
-			 * Adds the element to the LinkedListRecursive
-			 * @param element is the element to be added 
-			 * @return true if the element was added at the index,
-			 * false otherwise
-			 */
-			public boolean add(E element) {
-				if (next == null) {
-					next = new ListNode(element, next);
-					size++;
-					return true;
-				} else {
-					return next.add(element);
-				}
-					
 			}
 			
 			/**
@@ -547,5 +477,3 @@ public class Proj1 {
 	}
 
 }
-
-
